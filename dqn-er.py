@@ -29,21 +29,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
-
-class ReplayMemory(object):
-
-    def __init__(self, capacity):
-        self.memory = deque([], maxlen=capacity)
-
-    def push(self, *args):
-        """Save a transition"""
-        self.memory.append(Transition(*args))
-
-    def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
-
-    def __len__(self):
-        return len(self.memory)
     
 class DQN(nn.Module):
 
@@ -107,7 +92,6 @@ target_net = DQN(n_observations, n_actions).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-memory = ReplayMemory(10000)
 
 
 steps_done = 0
@@ -157,40 +141,21 @@ def plot_durations(show_result=False):
         else:
             display.display(plt.gcf())
 
-def optimize_model():
-    if len(memory) < BATCH_SIZE:
-        return
-    transitions = memory.sample(BATCH_SIZE)
-    # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
-    # detailed explanation). This converts batch-array of Transitions
-    # to Transition of batch-arrays.
-    batch = Transition(*zip(*transitions))
+def optimize_model(next_state, reward, state, action):
 
-    # Compute a mask of non-final states and concatenate the batch elements
-    # (a final state would've been the one after which simulation ended)
-    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                          batch.next_state)), device=device, dtype=torch.bool)
-    non_final_next_states = torch.cat([s for s in batch.next_state
-                                                if s is not None])
-    state_batch = torch.cat(batch.state)
-    action_batch = torch.cat(batch.action)
-    reward_batch = torch.cat(batch.reward)
-
-    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-    # columns of actions taken. These are the actions which would've been taken
-    # for each batch state according to policy_net
-    state_action_values = policy_net(state_batch).gather(1, action_batch)
-
+    # Prepare for model update
+    if next_state is None:
+        next_state_values = torch.zeros(1)
+    else:
+        with torch.no_grad():
+            next_state_values = target_net(next_state).max(1)[0]
+    expected_state_action_values = (next_state_values * GAMMA) + reward
+    state_action_values = policy_net(state).gather(1, action)
     # Compute V(s_{t+1}) for all next states.
     # Expected values of actions for non_final_next_states are computed based
     # on the "older" target_net; selecting their best reward with max(1).values
     # This is merged based on the mask, such that we'll have either the expected
     # state value or 0 in case the state was final.
-    next_state_values = torch.zeros(BATCH_SIZE, device=device)
-    with torch.no_grad():
-        next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
-    # Compute the expected Q values
-    expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
     # Compute Huber loss
     criterion = nn.SmoothL1Loss()
@@ -206,7 +171,7 @@ def optimize_model():
 if torch.cuda.is_available():
     num_episodes = 600
 else:
-    num_episodes = 500
+    num_episodes = 300
 def training(num_episodes):
     
     for i_episode in range(num_episodes):
@@ -224,14 +189,14 @@ def training(num_episodes):
             else:
                 next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
 
-            # Store the transition in memory
-            memory.push(state, action, next_state, reward)
+            
 
             # Move to the next state
-            state = next_state
 
             # Perform one step of the optimization (on the policy network)
-            optimize_model()
+            optimize_model(next_state, reward, state, action)
+
+            state = next_state
 
             # Soft update of the target network's weights
             # θ′ ← τ θ + (1 −τ )θ′
@@ -249,57 +214,91 @@ def training(num_episodes):
                 break
     return episode_durations      
 
-def run():
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    # set the font size
-    plt.rcParams.update({'font.size': 15})
+# Plotting
+plt.figure(figsize=(10, 6))
+# set the font size
+plt.rcParams.update({'font.size': 15})
 
-    episode_durations = training(num_episodes)
-    plt.plot(episode_durations, alpha=0.1, color="orange")
-    # please plot a line using smooth() function from plotHelper.py
-    plt.plot(smooth(episode_durations, 30), label=f'Layers Number: {LAYER_COUNT}', alpha=1.0, color="orange")
-    ########################################################################################
-    # plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
-    plt.xlabel('Episode')
-    plt.ylabel('Rewards')
-    plt.title('Comparisons of Networks with Different Number of Layers')
-    plt.legend()
-    # Add text
-    text = f'Learning Rate: {LR}, Exploration Policy: Epsilon-Greedy,\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
-    plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
-    # Save plot
-    plt.savefig(f'./plots/dqn/DQN_{num_episodes}.png')
+episode_durations = training(num_episodes)
+plt.plot(episode_durations, alpha=0.1, color="orange")
+# please plot a line using smooth() function from plotHelper.py
+plt.plot(smooth(episode_durations, 30), label=f'Layers Number: {LAYER_COUNT}', alpha=1.0, color="orange")
 
-    print('Complete')
+########################################################################################
+# LAYER_COUNT = 2
+# policy_net = DQN(n_observations, n_actions).to(device)
+# target_net = DQN(n_observations, n_actions).to(device)
+# target_net.load_state_dict(policy_net.state_dict())
+# optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+# episode_durations = []
+# episode_durations = training(num_episodes)
+# plt.plot(episode_durations, alpha=0.1, color="blue")
+# plt.plot(smooth(episode_durations, 30), label=f'Layers number: {LAYER_COUNT}', alpha=1.0, color="blue")
+########################################################################################
+########################################################################################
+# LAYER_COUNT = 3
+# policy_net = DQN(n_observations, n_actions).to(device)
+# target_net = DQN(n_observations, n_actions).to(device)
+# target_net.load_state_dict(policy_net.state_dict())
+# optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+# episode_durations = []
+# if target_net.get_layer_count() == 3:
+#     episode_durations = training(num_episodes)
+# else:
+#     error = f'Error: The number of layers is not equal to {LAYER_COUNT}'
+#     print(error)
+# plt.plot(episode_durations, alpha=0.1, color="red")
+# plt.plot(smooth(episode_durations, 30), label=f'Layers number: {LAYER_COUNT}', alpha=1.0, color="red")
+########################################################################################
+# plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
+plt.xlabel('Episode')
+plt.ylabel('Rewards')
+plt.title('Comparisons of Networks with Different Number of Layers')
+plt.legend()
+# Add text
+text = f'Learning Rate: {LR}, Exploration Policy: Epsilon-Greedy,\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
+plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
+# Save plot
+plt.savefig(f'./plots/dqn-er/DQN_{num_episodes}.png')
 
-#############################################################################################################
-import argparse
-import runpy
-def main():
-    parser = argparse.ArgumentParser(description='DQN Command Line Interface')
-    parser.add_argument('--experience_replay', action='store_true', help='Disable experience replay')
-    parser.add_argument('--target_network', action='store_true', help='Disable target network')
-    args = parser.parse_args()
-    print(args)
-    if args.experience_replay and args.target_network:
-        run_dqn('dqn_er_tn.py')
-    elif args.experience_replay:
-        run_dqn('dqn_er.py')
-    elif args.target_network:
-        run_dqn('dqn_tn.py')
-    else:
-        print('Running DQN...')
-        run()
-        print('DQN executed successfully! You can check the results in the ./plots/dqn folder.')
-    parser.print_help()
+# test the model
+# env = gym.make("CartPole-v1")
+# state, info = env.reset()
+# state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+# # print the reward
+# reward = 0
+# mean_reward = []
+# # test for 20 epochs, give the mean reward
+# for i in range(20):
+#     for t in count():
+#         action = policy_net(state).max(1).indices.view(1, 1)
+#         observation, r, terminated, truncated, _ = env.step(action.item())
+#         reward += r
+#         if terminated or truncated:
+#             state, info = env.reset()
+#             state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+#             break
+#         else:
+#             state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+#     mean_reward.append(reward) 
+#     reward = 0
+# # print the mean reward
+# # get the mean of mean_reward[]
+# # plot the mean_reward
+    
 
-def run_dqn(file_name):
-    # Run the specified DQN file
-    print(f"Running {file_name}...")
-    # Add your code here to execute the specified DQN file
-    runpy.run_path(file_name)
-    print(f"{file_name} executed successfully! You can check the results in the ./plots folder.")
+#     plt.figure(2)
+#     plt.title('Mean Reward')
+#     plt.xlabel('Epoch')
+#     plt.ylabel('Mean Reward')
+#     plt.plot(mean_reward)
+#     plt.show()
 
-if __name__ == '__main__':
-    main()
+# mean_reward = sum(mean_reward)/len(mean_reward)
+
+# print(mean_reward)
+
+print('Complete')
+# plot_durations(show_result=True)
+# plt.ioff()
+# plt.show()

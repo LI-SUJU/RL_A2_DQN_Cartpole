@@ -103,8 +103,6 @@ state, info = env.reset()
 n_observations = len(state)
 
 policy_net = DQN(n_observations, n_actions).to(device)
-target_net = DQN(n_observations, n_actions).to(device)
-target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 memory = ReplayMemory(10000)
@@ -188,7 +186,7 @@ def optimize_model():
     # state value or 0 in case the state was final.
     next_state_values = torch.zeros(BATCH_SIZE, device=device)
     with torch.no_grad():
-        next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+        next_state_values[non_final_mask] = policy_net(non_final_next_states).max(1).values
     # Compute the expected Q values
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
@@ -206,7 +204,7 @@ def optimize_model():
 if torch.cuda.is_available():
     num_episodes = 600
 else:
-    num_episodes = 500
+    num_episodes = 200
 def training(num_episodes):
     
     for i_episode in range(num_episodes):
@@ -235,11 +233,6 @@ def training(num_episodes):
 
             # Soft update of the target network's weights
             # θ′ ← τ θ + (1 −τ )θ′
-            target_net_state_dict = target_net.state_dict()
-            policy_net_state_dict = policy_net.state_dict()
-            for key in policy_net_state_dict:
-                target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
-            target_net.load_state_dict(target_net_state_dict)
 
             if done:
                 episode_durations.append(t + 1)
@@ -249,57 +242,65 @@ def training(num_episodes):
                 break
     return episode_durations      
 
-def run():
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    # set the font size
-    plt.rcParams.update({'font.size': 15})
+# Plotting
+plt.figure(figsize=(10, 6))
+# set the font size
+plt.rcParams.update({'font.size': 15})
 
-    episode_durations = training(num_episodes)
-    plt.plot(episode_durations, alpha=0.1, color="orange")
-    # please plot a line using smooth() function from plotHelper.py
-    plt.plot(smooth(episode_durations, 30), label=f'Layers Number: {LAYER_COUNT}', alpha=1.0, color="orange")
-    ########################################################################################
-    # plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
-    plt.xlabel('Episode')
-    plt.ylabel('Rewards')
-    plt.title('Comparisons of Networks with Different Number of Layers')
-    plt.legend()
-    # Add text
-    text = f'Learning Rate: {LR}, Exploration Policy: Epsilon-Greedy,\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
-    plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
-    # Save plot
-    plt.savefig(f'./plots/dqn/DQN_{num_episodes}.png')
+episode_durations = training(num_episodes)
+plt.plot(episode_durations, alpha=0.1, color="orange")
+# please plot a line using smooth() function from plotHelper.py
+plt.plot(smooth(episode_durations, 30), label=f'Layers Number: {LAYER_COUNT}', alpha=1.0, color="orange")
+########################################################################################
+# plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
+plt.xlabel('Episode')
+plt.ylabel('Rewards')
+plt.title('Comparisons of Networks with Different Number of Layers')
+plt.legend()
+# Add text
+text = f'Learning Rate: {LR}, Exploration Policy: Epsilon-Greedy,\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
+plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
+# Save plot
+plt.savefig(f'./plots/dqn-tn/DQN_{num_episodes}.png')
 
-    print('Complete')
+# test the model
+# env = gym.make("CartPole-v1")
+# state, info = env.reset()
+# state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+# # print the reward
+# reward = 0
+# mean_reward = []
+# # test for 20 epochs, give the mean reward
+# for i in range(20):
+#     for t in count():
+#         action = policy_net(state).max(1).indices.view(1, 1)
+#         observation, r, terminated, truncated, _ = env.step(action.item())
+#         reward += r
+#         if terminated or truncated:
+#             state, info = env.reset()
+#             state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+#             break
+#         else:
+#             state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+#     mean_reward.append(reward) 
+#     reward = 0
+# # print the mean reward
+# # get the mean of mean_reward[]
+# # plot the mean_reward
+    
 
-#############################################################################################################
-import argparse
-import runpy
-def main():
-    parser = argparse.ArgumentParser(description='DQN Command Line Interface')
-    parser.add_argument('--experience_replay', action='store_true', help='Disable experience replay')
-    parser.add_argument('--target_network', action='store_true', help='Disable target network')
-    args = parser.parse_args()
-    print(args)
-    if args.experience_replay and args.target_network:
-        run_dqn('dqn_er_tn.py')
-    elif args.experience_replay:
-        run_dqn('dqn_er.py')
-    elif args.target_network:
-        run_dqn('dqn_tn.py')
-    else:
-        print('Running DQN...')
-        run()
-        print('DQN executed successfully! You can check the results in the ./plots/dqn folder.')
-    parser.print_help()
+#     plt.figure(2)
+#     plt.title('Mean Reward')
+#     plt.xlabel('Epoch')
+#     plt.ylabel('Mean Reward')
+#     plt.plot(mean_reward)
+#     plt.show()
 
-def run_dqn(file_name):
-    # Run the specified DQN file
-    print(f"Running {file_name}...")
-    # Add your code here to execute the specified DQN file
-    runpy.run_path(file_name)
-    print(f"{file_name} executed successfully! You can check the results in the ./plots folder.")
+# mean_reward = sum(mean_reward)/len(mean_reward)
 
-if __name__ == '__main__':
-    main()
+# print(mean_reward)
+
+print('Complete')
+# plot_durations(show_result=True)
+# plt.ioff()
+# plt.show()

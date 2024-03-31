@@ -13,9 +13,10 @@ import torch.nn.functional as F
 
 LAYER_COUNT = 1 # need to tune, 3, 4, 5
 HIDDEN_DIM = 128 # need to tune, 16, 32, 64
-
+policy = "epsilon-greedy" # need to tune, epsilon-greedy, softmax
 env = gym.make("CartPole-v1")
-
+temp = 0.1
+epsilon = 0.9
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
@@ -113,7 +114,7 @@ memory = ReplayMemory(10000)
 steps_done = 0
 
 
-def select_action(state):
+def select_action_epsilon(state):
     global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
@@ -128,6 +129,16 @@ def select_action(state):
     else:
         return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
 
+def select_action_softmax(state):
+    global steps_done
+    temperature = 0.1
+    # decrease the temperature based on the number of steps
+    temperature = max(temperature * 0.999 ** steps_done, 0.0001)
+    action_values = policy_net(state)
+    probabilities = F.softmax(action_values / temperature, dim=1)
+    action = torch.multinomial(probabilities, 1)
+    # print(action_values)
+    return action
 
 episode_durations = []
 
@@ -206,15 +217,18 @@ def optimize_model():
 if torch.cuda.is_available():
     num_episodes = 600
 else:
-    num_episodes = 500
-def training(num_episodes):
+    num_episodes = 700
+def training(num_episodes, policy="epsilon-greedy"):
     
     for i_episode in range(num_episodes):
         # Initialize the environment and get its state
         state, info = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         for t in count():
-            action = select_action(state)
+            if policy == "epsilon-greedy":
+                action = select_action_epsilon(state)
+            else:
+                action = select_action_softmax(state)
             observation, reward, terminated, truncated, _ = env.step(action.item())
             reward = torch.tensor([reward], device=device)
             done = terminated or truncated
@@ -249,57 +263,78 @@ def training(num_episodes):
                 break
     return episode_durations      
 
-def run():
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    # set the font size
-    plt.rcParams.update({'font.size': 15})
+# Plotting
+plt.figure(figsize=(10, 6))
+# set the font size
+plt.rcParams.update({'font.size': 15})
 
-    episode_durations = training(num_episodes)
-    plt.plot(episode_durations, alpha=0.1, color="orange")
-    # please plot a line using smooth() function from plotHelper.py
-    plt.plot(smooth(episode_durations, 30), label=f'Layers Number: {LAYER_COUNT}', alpha=1.0, color="orange")
-    ########################################################################################
-    # plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
-    plt.xlabel('Episode')
-    plt.ylabel('Rewards')
-    plt.title('Comparisons of Networks with Different Number of Layers')
-    plt.legend()
-    # Add text
-    text = f'Learning Rate: {LR}, Exploration Policy: Epsilon-Greedy,\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
-    plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
-    # Save plot
-    plt.savefig(f'./plots/dqn/DQN_{num_episodes}.png')
+episode_durations = training(num_episodes)
+plt.plot(episode_durations, alpha=0.1, color="orange")
+# please plot a line using smooth() function from plotHelper.py
+plt.plot(smooth(episode_durations, 30), label=f'{policy}', alpha=1.0, color="orange")
 
-    print('Complete')
+########################################################################################
+steps_done = 0
+policy = "softmax"
+policy_net = DQN(n_observations, n_actions).to(device)
+target_net = DQN(n_observations, n_actions).to(device)
+target_net.load_state_dict(policy_net.state_dict())
+optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+memory = ReplayMemory(10000)
+episode_durations = []
+episode_durations = training(num_episodes, policy)
+plt.plot(episode_durations, alpha=0.1, color="green")
+plt.plot(smooth(episode_durations, 30), label=f'{policy}', alpha=1.0, color="green")
+########################################################################################
+# plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
+plt.xlabel('Episode')
+plt.ylabel('Rewards')
+plt.title('Comparisons of Epsilon-Greedy and Softmax')
+plt.legend()
+# Add text
+text = f'Learning Rate: {LR}, Number of Layers: {LAYER_COUNT},\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
+plt.text(0.02, 80, text, verticalalignment='top', fontsize=10, alpha=0.5)
+# Save plot
+plt.savefig(f'./plots/epsilon_softmax/DQN_exploration_policy.png')
 
-#############################################################################################################
-import argparse
-import runpy
-def main():
-    parser = argparse.ArgumentParser(description='DQN Command Line Interface')
-    parser.add_argument('--experience_replay', action='store_true', help='Disable experience replay')
-    parser.add_argument('--target_network', action='store_true', help='Disable target network')
-    args = parser.parse_args()
-    print(args)
-    if args.experience_replay and args.target_network:
-        run_dqn('dqn_er_tn.py')
-    elif args.experience_replay:
-        run_dqn('dqn_er.py')
-    elif args.target_network:
-        run_dqn('dqn_tn.py')
-    else:
-        print('Running DQN...')
-        run()
-        print('DQN executed successfully! You can check the results in the ./plots/dqn folder.')
-    parser.print_help()
+# test the model
+# env = gym.make("CartPole-v1")
+# state, info = env.reset()
+# state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+# # print the reward
+# reward = 0
+# mean_reward = []
+# # test for 20 epochs, give the mean reward
+# for i in range(20):
+#     for t in count():
+#         action = policy_net(state).max(1).indices.view(1, 1)
+#         observation, r, terminated, truncated, _ = env.step(action.item())
+#         reward += r
+#         if terminated or truncated:
+#             state, info = env.reset()
+#             state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+#             break
+#         else:
+#             state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+#     mean_reward.append(reward) 
+#     reward = 0
+# # print the mean reward
+# # get the mean of mean_reward[]
+# # plot the mean_reward
+    
 
-def run_dqn(file_name):
-    # Run the specified DQN file
-    print(f"Running {file_name}...")
-    # Add your code here to execute the specified DQN file
-    runpy.run_path(file_name)
-    print(f"{file_name} executed successfully! You can check the results in the ./plots folder.")
+#     plt.figure(2)
+#     plt.title('Mean Reward')
+#     plt.xlabel('Epoch')
+#     plt.ylabel('Mean Reward')
+#     plt.plot(mean_reward)
+#     plt.show()
 
-if __name__ == '__main__':
-    main()
+# mean_reward = sum(mean_reward)/len(mean_reward)
+
+# print(mean_reward)
+
+print('Complete')
+# plot_durations(show_result=True)
+# plt.ioff()
+# plt.show()
