@@ -493,7 +493,7 @@ ax.legend()
 
 # if the folder does not exist, create it
 import os
-os.makedirs('./plots', exist_ok=True)
+os.makedirs('./plots/cnn', exist_ok=True)
 fig.savefig('./plots/cnn/DQN-CNN.png')
 
 
