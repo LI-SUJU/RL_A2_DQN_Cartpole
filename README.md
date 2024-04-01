@@ -1,6 +1,6 @@
 ### Detailed instructions and nicely constructed codes can be found here
 - [GitHub Repo](https://github.com/LI-SUJU/RL_A2_DQN_Cartpole)
-- We highly reccomend to download the project from GitHub excecpt BrighSpace. You may need a .bak file to use the command tool smoothly, whose file type is not allowed for Brightspace.
+- We highly reccomend to download the project from GitHub except BrighSpace. You may need a .bak file to use the command tool smoothly, whose file type is not allowed for Brightspace.
 ### how to run from command lines
 - run DQN: python dqn.py
 - run DQN-TN: python dqn.py --target_network
