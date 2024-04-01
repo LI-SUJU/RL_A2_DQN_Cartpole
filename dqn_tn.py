@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import numpy as np
 
 LAYER_COUNT = 1 # need to tune, 3, 4, 5
 HIDDEN_DIM = 128 # need to tune, 16, 32, 64
@@ -204,7 +205,7 @@ def optimize_model():
 if torch.cuda.is_available():
     num_episodes = 600
 else:
-    num_episodes = 500
+    num_episodes = 1000
 def training(num_episodes):
     
     for i_episode in range(num_episodes):
@@ -248,6 +249,8 @@ plt.figure(figsize=(10, 6))
 plt.rcParams.update({'font.size': 15})
 
 episode_durations = training(num_episodes)
+# Save episode_durations as a file
+np.savetxt('./data4plot/dqn_tn_episode_durations.txt', episode_durations)
 plt.plot(episode_durations, alpha=0.1, color="orange")
 # please plot a line using smooth() function from plotHelper.py
 plt.plot(smooth(episode_durations, 30), label=f'Layers Number: {LAYER_COUNT}', alpha=1.0, color="orange")

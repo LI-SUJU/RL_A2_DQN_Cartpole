@@ -5,6 +5,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
+
+import numpy as np
 from plotHelper import smooth
 import torch
 import torch.nn as nn
@@ -206,7 +208,7 @@ def optimize_model():
 if torch.cuda.is_available():
     num_episodes = 600
 else:
-    num_episodes = 500
+    num_episodes = 1000
 def training(num_episodes):
     
     for i_episode in range(num_episodes):
@@ -256,6 +258,8 @@ def run():
     plt.rcParams.update({'font.size': 15})
 
     episode_durations = training(num_episodes)
+    # Save episode_durations as a file
+    np.savetxt('./data4plot/dqn_episode_durations.txt', episode_durations)
     plt.plot(episode_durations, alpha=0.1, color="orange")
     # please plot a line using smooth() function from plotHelper.py
     plt.plot(smooth(episode_durations, 30), label=f'Layers Number: {LAYER_COUNT}', alpha=1.0, color="orange")
@@ -272,7 +276,6 @@ def run():
     plt.savefig(f'./plots/dqn/DQN_{num_episodes}.png')
 
     print('Complete')
-
 #############################################################################################################
 import argparse
 import runpy

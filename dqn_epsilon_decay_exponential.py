@@ -5,18 +5,20 @@ import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
+
+import numpy as np
 from plotHelper import smooth
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from epsilon_decay import decay_epsilon
 
 LAYER_COUNT = 1 # need to tune, 3, 4, 5
 HIDDEN_DIM = 128 # need to tune, 16, 32, 64
-policy = "epsilon-greedy" # need to tune, epsilon-greedy, softmax
+
 env = gym.make("CartPole-v1")
-temp = 0.1
-epsilon = 0.9
+
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
@@ -94,6 +96,7 @@ GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 1000
+DECAY_RATE = 0.9999
 TAU = 0.005
 LR = 1e-4
 
@@ -112,13 +115,19 @@ memory = ReplayMemory(10000)
 
 
 steps_done = 0
+eps = EPS_START
+eps_arr = []
+eps_arr.append(eps)
 
-
-def select_action_epsilon(state):
-    global steps_done
+def select_action(state):
+    global steps_done, eps
     sample = random.random()
-    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-        math.exp(-1. * steps_done / EPS_DECAY)
+    eps_threshold = decay_epsilon(steps_done, current_reward=0, eps=eps, MODE='EXPONENTIAL', decay_rate=DECAY_RATE)
+    eps = eps_threshold
+    eps_arr.append(eps)
+    if steps_done % 100 == 0:
+        print(eps_threshold)
+        print(sample > eps_threshold)
     steps_done += 1
     if sample > eps_threshold:
         with torch.no_grad():
@@ -129,16 +138,6 @@ def select_action_epsilon(state):
     else:
         return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
 
-def select_action_softmax(state):
-    global steps_done
-    temperature = 0.1
-    # decrease the temperature based on the number of steps
-    temperature = max(temperature * 0.99 ** steps_done, 0.001)
-    action_values = policy_net(state)
-    probabilities = F.softmax(action_values / temperature, dim=1)
-    action = torch.multinomial(probabilities, 1)
-    # print(action_values)
-    return action
 
 episode_durations = []
 
@@ -217,18 +216,15 @@ def optimize_model():
 if torch.cuda.is_available():
     num_episodes = 600
 else:
-    num_episodes = 700
-def training(num_episodes, policy="epsilon-greedy"):
+    num_episodes = 600
+def training(num_episodes):
     
     for i_episode in range(num_episodes):
         # Initialize the environment and get its state
         state, info = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         for t in count():
-            if policy == "epsilon-greedy":
-                action = select_action_epsilon(state)
-            else:
-                action = select_action_softmax(state)
+            action = select_action(state)
             observation, reward, terminated, truncated, _ = env.step(action.item())
             reward = torch.tensor([reward], device=device)
             done = terminated or truncated
@@ -269,34 +265,33 @@ plt.figure(figsize=(10, 6))
 plt.rcParams.update({'font.size': 15})
 
 episode_durations = training(num_episodes)
-plt.plot(episode_durations, alpha=0.1, color="orange")
-# please plot a line using smooth() function from plotHelper.py
-plt.plot(smooth(episode_durations, 30), label=f'{policy}', alpha=1.0, color="orange")
+# Save episode_durations as a file
+np.savetxt('./data4plot/epsilon/EXPONENTIAL.txt', episode_durations)
+# Save episode_durations as a file
+np.savetxt('./data4plot/epsilon/EXPONENTIAL_eps.txt', eps_arr)
+# plt.plot(episode_durations, alpha=0.1, color="orange")
+# # please plot a line using smooth() function from plotHelper.py
+# plt.plot(smooth(episode_durations, 30), label=f'Epsilon Decay: EXPONENTIAL', alpha=1.0, color="orange")
 
-########################################################################################
-steps_done = 0
-policy = "softmax"
-policy_net = DQN(n_observations, n_actions).to(device)
-target_net = DQN(n_observations, n_actions).to(device)
-target_net.load_state_dict(policy_net.state_dict())
-optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-memory = ReplayMemory(10000)
-episode_durations = []
-episode_durations = training(num_episodes, policy)
-plt.plot(episode_durations, alpha=0.1, color="green")
-plt.plot(smooth(episode_durations, 30), label=f'{policy}', alpha=1.0, color="green")
-########################################################################################
-# plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
-plt.xlabel('Episode')
-plt.ylabel('Rewards')
-plt.title('Comparisons of Epsilon-Greedy and Softmax')
-plt.legend()
-# Add text
-text = f'Learning Rate: {LR}, Number of Layers: {LAYER_COUNT},\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
-plt.text(0.02, 80, text, verticalalignment='top', fontsize=10, alpha=0.5)
-# Save plot
-plt.savefig(f'./plots/epsilon_softmax/DQN_exploration_policy.png')
+# ########################################################################################
+# # plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
+# plt.xlabel('Episode')
+# plt.ylabel('Rewards')
+# plt.title('Comparisons of Networks with Different Number of Layers')
+# plt.legend()
+# # Add text
+# text = f'Learning Rate: {LR}, Exploration Policy: Epsilon-Greedy,\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
+# plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
+# # Save plot
+# plt.savefig(f'./plots/epsilon_decay/EXPONENTIAL.png')
 
+# #plot eps_arr
+# plt.figure(figsize=(10, 6))
+# plt.plot(eps_arr)
+# plt.xlabel('Step')
+# plt.ylabel('Epsilon')
+# plt.title('Epsilon Decay')
+# plt.savefig(f'./plots/epsilon_decay/EXPONENTIAL_eps.png')
 # test the model
 # env = gym.make("CartPole-v1")
 # state, info = env.reset()

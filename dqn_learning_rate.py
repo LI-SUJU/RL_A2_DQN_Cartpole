@@ -13,10 +13,9 @@ import torch.nn.functional as F
 
 LAYER_COUNT = 1 # need to tune, 3, 4, 5
 HIDDEN_DIM = 128 # need to tune, 16, 32, 64
-policy = "epsilon-greedy" # need to tune, epsilon-greedy, softmax
+
 env = gym.make("CartPole-v1")
-temp = 0.1
-epsilon = 0.9
+
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
@@ -114,7 +113,7 @@ memory = ReplayMemory(10000)
 steps_done = 0
 
 
-def select_action_epsilon(state):
+def select_action(state):
     global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
@@ -129,16 +128,6 @@ def select_action_epsilon(state):
     else:
         return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
 
-def select_action_softmax(state):
-    global steps_done
-    temperature = 0.1
-    # decrease the temperature based on the number of steps
-    temperature = max(temperature * 0.99 ** steps_done, 0.001)
-    action_values = policy_net(state)
-    probabilities = F.softmax(action_values / temperature, dim=1)
-    action = torch.multinomial(probabilities, 1)
-    # print(action_values)
-    return action
 
 episode_durations = []
 
@@ -213,22 +202,65 @@ def optimize_model():
     # In-place gradient clipping
     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
+def optimize_model_scheduler():
+    if len(memory) < BATCH_SIZE:
+        return
+    transitions = memory.sample(BATCH_SIZE)
+    # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
+    # detailed explanation). This converts batch-array of Transitions
+    # to Transition of batch-arrays.
+    batch = Transition(*zip(*transitions))
+
+    # Compute a mask of non-final states and concatenate the batch elements
+    # (a final state would've been the one after which simulation ended)
+    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                          batch.next_state)), device=device, dtype=torch.bool)
+    non_final_next_states = torch.cat([s for s in batch.next_state
+                                                if s is not None])
+    state_batch = torch.cat(batch.state)
+    action_batch = torch.cat(batch.action)
+    reward_batch = torch.cat(batch.reward)
+
+    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+    # columns of actions taken. These are the actions which would've been taken
+    # for each batch state according to policy_net
+    state_action_values = policy_net(state_batch).gather(1, action_batch)
+
+    # Compute V(s_{t+1}) for all next states.
+    # Expected values of actions for non_final_next_states are computed based
+    # on the "older" target_net; selecting their best reward with max(1).values
+    # This is merged based on the mask, such that we'll have either the expected
+    # state value or 0 in case the state was final.
+    next_state_values = torch.zeros(BATCH_SIZE, device=device)
+    with torch.no_grad():
+        next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+    # Compute the expected Q values
+    expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+
+    # Compute Huber loss
+    criterion = nn.SmoothL1Loss()
+    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+
+    # Optimize the model
+    optimizer.zero_grad()
+    loss.backward()
+    # In-place gradient clipping
+    torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+    optimizer.step()
+    scheduler.step()
 
 if torch.cuda.is_available():
     num_episodes = 600
 else:
     num_episodes = 700
-def training(num_episodes, policy="epsilon-greedy"):
+def training(num_episodes):
     
     for i_episode in range(num_episodes):
         # Initialize the environment and get its state
         state, info = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         for t in count():
-            if policy == "epsilon-greedy":
-                action = select_action_epsilon(state)
-            else:
-                action = select_action_softmax(state)
+            action = select_action(state)
             observation, reward, terminated, truncated, _ = env.step(action.item())
             reward = torch.tensor([reward], device=device)
             done = terminated or truncated
@@ -262,6 +294,47 @@ def training(num_episodes, policy="epsilon-greedy"):
                 # plot_durations()
                 break
     return episode_durations      
+def training_scheduler(num_episodes):
+    
+    for i_episode in range(num_episodes):
+        # Initialize the environment and get its state
+        state, info = env.reset()
+        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        for t in count():
+            action = select_action(state)
+            observation, reward, terminated, truncated, _ = env.step(action.item())
+            reward = torch.tensor([reward], device=device)
+            done = terminated or truncated
+
+            if terminated:
+                next_state = None
+            else:
+                next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+
+            # Store the transition in memory
+            memory.push(state, action, next_state, reward)
+
+            # Move to the next state
+            state = next_state
+
+            # Perform one step of the optimization (on the policy network)
+            optimize_model_scheduler()
+
+            # Soft update of the target network's weights
+            # θ′ ← τ θ + (1 −τ )θ′
+            target_net_state_dict = target_net.state_dict()
+            policy_net_state_dict = policy_net.state_dict()
+            for key in policy_net_state_dict:
+                target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
+            target_net.load_state_dict(target_net_state_dict)
+
+            if done:
+                episode_durations.append(t + 1)
+                if i_episode % 10 == 0:
+                    print(f'Episode {i_episode}, reward: {t+1}')
+                # plot_durations()
+                break
+    return episode_durations      
 
 # Plotting
 plt.figure(figsize=(10, 6))
@@ -271,31 +344,59 @@ plt.rcParams.update({'font.size': 15})
 episode_durations = training(num_episodes)
 plt.plot(episode_durations, alpha=0.1, color="orange")
 # please plot a line using smooth() function from plotHelper.py
-plt.plot(smooth(episode_durations, 30), label=f'{policy}', alpha=1.0, color="orange")
+plt.plot(smooth(episode_durations, 30), label=f'Learning rate: {LR}', alpha=1.0, color="orange")
 
 ########################################################################################
-steps_done = 0
-policy = "softmax"
+LR = 5e-5
 policy_net = DQN(n_observations, n_actions).to(device)
 target_net = DQN(n_observations, n_actions).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 memory = ReplayMemory(10000)
 episode_durations = []
-episode_durations = training(num_episodes, policy)
-plt.plot(episode_durations, alpha=0.1, color="green")
-plt.plot(smooth(episode_durations, 30), label=f'{policy}', alpha=1.0, color="green")
+episode_durations = training(num_episodes)
+plt.plot(episode_durations, alpha=0.1, color="blue")
+plt.plot(smooth(episode_durations, 30), label=f'Learning rate: {LR}', alpha=1.0, color="blue")
+########################################################################################
+########################################################################################
+LR = 5e-4
+policy_net = DQN(n_observations, n_actions).to(device)
+target_net = DQN(n_observations, n_actions).to(device)
+target_net.load_state_dict(policy_net.state_dict())
+optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+memory = ReplayMemory(10000)
+episode_durations = []
+episode_durations = training(num_episodes)
+plt.plot(episode_durations, alpha=0.1, color="red")
+plt.plot(smooth(episode_durations, 30), label=f'Learning rate: {LR}', alpha=1.0, color="red")
+########################################################################################
+# use decay method cosanealrestart for learning rate
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+LR = 1e-3
+policy_net = DQN(n_observations, n_actions).to(device)
+target_net = DQN(n_observations, n_actions).to(device)
+target_net.load_state_dict(policy_net.state_dict())
+optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+memory = ReplayMemory(10000)
+episode_durations = []
+episode_durations = training(num_episodes)
+plt.plot(episode_durations, alpha=0.1, color='green')
+plt.plot(smooth(episode_durations, 30), label=f'Learning rate: decay from 0.001', alpha=1.0, color="green")
+
+            # self.policy_net.scheduler.step()
+
 ########################################################################################
 # plt.plot(range(49, len(episode_durations), 50), [sum(episode_durations[i:i+50])/50 for i in range(0, len(episode_durations), 50)], alpha=1.0, color="orange")
 plt.xlabel('Episode')
 plt.ylabel('Rewards')
-plt.title('Comparisons of Epsilon-Greedy and Softmax')
+plt.title('Comparisons of Networks with Different Learning Rates')
 plt.legend()
 # Add text
-text = f'Learning Rate: {LR}, Number of Layers: {LAYER_COUNT},\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
-plt.text(0.02, 80, text, verticalalignment='top', fontsize=10, alpha=0.5)
+text = f'Exploration Policy: Epsilon-Greedy, Number of Layers: {LAYER_COUNT},\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
+plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
 # Save plot
-plt.savefig(f'./plots/epsilon_softmax/DQN_exploration_policy.png')
+plt.savefig(f'./plots/learning_rate/DQN_{num_episodes}_with_decay_from_0.001.png')
 
 # test the model
 # env = gym.make("CartPole-v1")
