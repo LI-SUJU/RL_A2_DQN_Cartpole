@@ -265,6 +265,10 @@ plt.figure(figsize=(10, 6))
 plt.rcParams.update({'font.size': 15})
 
 episode_durations = training(num_episodes)
+
+# if the folder does not exist, create it
+import os
+os.makedirs('./data4plot/epsilon', exist_ok=True)
 # Save episode_durations as a file
 np.savetxt('./data4plot/epsilon/LINEAR.txt', episode_durations)
 # Save episode_durations as a file

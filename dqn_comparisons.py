@@ -23,6 +23,9 @@ plt.rcParams.update({'font.size': 15})
 # Iterate over the files and plot the rewards
 for file in files:
     # Read the rewards from the file
+    # skip the folder
+    if os.path.isdir(os.path.join(directory, file)):
+        continue
     rewards = []
     with open(os.path.join(directory, file), 'r') as f:
         for line in f:
@@ -57,5 +60,6 @@ plt.title('Comparisons of DQN Variants')
 
 # Save the plot to a file
 # plt.savefig('./plots/dqn_comparison/dqn_comparisons.png')
-
-plt.savefig('./plots/dqn_comparison/dqn_comparisons_without_dqn.png')
+# if the folder does not exist, create it
+os.makedirs('./plots1/dqn_comparison', exist_ok=True)
+plt.savefig('./plots1/dqn_comparison/dqn_comparisons_without_dqn.png')

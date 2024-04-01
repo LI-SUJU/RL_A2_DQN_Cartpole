@@ -272,6 +272,9 @@ def run():
     # Add text
     text = f'Learning Rate: {LR}, Exploration Policy: Epsilon-Greedy,\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
     plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
+    # if the folder does not exist, create it   
+    import os
+    os.makedirs('./plots/dqn', exist_ok=True)
     # Save plot
     plt.savefig(f'./plots/dqn/DQN_{num_episodes}.png')
 

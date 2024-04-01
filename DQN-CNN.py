@@ -490,6 +490,10 @@ ax.set_ylabel('Reward')
 ax.plot(t, score_mean, label='Score Mean', color='red', alpha=0.2)
 ax.plot(t, last100_mean, color='red', label='Smoothed mean')
 ax.legend()
-fig.savefig('score.png')
+
+# if the folder does not exist, create it
+import os
+os.makedirs('./plots', exist_ok=True)
+fig.savefig('./plots/cnn/DQN-CNN.png')
 
 

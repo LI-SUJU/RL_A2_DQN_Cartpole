@@ -216,6 +216,10 @@ plt.figure(figsize=(10, 6))
 plt.rcParams.update({'font.size': 15})
 
 episode_durations = training(num_episodes)
+
+# if the folder does not exist, create it
+import os
+os.makedirs('./data4plot/dqn_er_tn', exist_ok=True)
 # Save episode_durations as a file
 np.savetxt('./data4plot/dqn_er_tn_episode_durations.txt', episode_durations)
 plt.plot(episode_durations, alpha=0.1, color="orange")
@@ -256,6 +260,10 @@ plt.legend()
 # Add text
 text = f'Learning Rate: {LR}, Exploration Policy: Epsilon-Greedy,\nDimention of Hidden Layers: {HIDDEN_DIM}, Gamma: {GAMMA}, Tau: {TAU}'
 plt.text(0.02, 80, text, verticalalignment='top', fontsize=12, alpha=0.5)
+
+# if the folder does not exist, create it
+import os
+os.makedirs('./plots/dqn-er-tn', exist_ok=True)
 # Save plot
 plt.savefig(f'./plots/dqn-er-tn/DQN_{num_episodes}.png')
 
