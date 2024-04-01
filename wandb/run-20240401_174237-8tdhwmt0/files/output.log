@@ -1,0 +1,8 @@
+/Users/lisuju/Documents/GitHub/RL_A2_PyTorch/.venv/lib/python3.10/site-packages/gym/envs/registration.py:555: UserWarning: [33mWARN: The environment CartPole-v0 is out of date. You should consider upgrading to version `v1`.
+  logger.warn(
+/Users/lisuju/Documents/GitHub/RL_A2_PyTorch/.venv/lib/python3.10/site-packages/gym/envs/classic_control/cartpole.py:211: UserWarning: [33mWARN: You are calling render method without specifying any render mode. You can specify the render_mode at initialization, e.g. gym("CartPole-v0", render_mode="rgb_array")
+  gym.logger.warn(
+/Users/lisuju/Documents/GitHub/RL_A2_PyTorch/.venv/lib/python3.10/site-packages/gym/envs/registration.py:555: UserWarning: [33mWARN: The environment CartPole-v0 is out of date. You should consider upgrading to version `v1`.
+  logger.warn(
+Screen height:  60  | Width:  135
+Complete
