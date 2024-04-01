@@ -12791,3 +12791,13 @@
 2024-04-01 21:25:15,918 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: status_report
 2024-04-01 21:25:17,689 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: keepalive
 2024-04-01 21:25:20,942 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: status_report
+2024-04-01 21:25:22,715 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: keepalive
+2024-04-01 21:25:25,833 DEBUG   SenderThread:54284 [sender.py:send():379] send: stats
+2024-04-01 21:25:26,839 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: status_report
+2024-04-01 21:25:27,075 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: internal_messages
+2024-04-01 21:25:31,860 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: status_report
+2024-04-01 21:25:32,756 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: keepalive
+2024-04-01 21:25:36,881 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: status_report
+2024-04-01 21:25:37,778 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: keepalive
+2024-04-01 21:25:41,907 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: status_report
+2024-04-01 21:25:42,082 DEBUG   HandlerThread:54284 [handler.py:handle_request():146] handle_request: internal_messages
